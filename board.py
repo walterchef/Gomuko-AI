@@ -4,7 +4,7 @@ import copy
 
 class Board:
 
-    def __init__(self, rows, cols, win):
+    def __init__(self, rows: int, cols: int, win: int) -> None:
         self.rows = int(rows)
         self.cols = int(cols)
         self.win = int(win)
@@ -13,11 +13,12 @@ class Board:
         self.ordered_moves: list[tuple[int, int]] = []
 
     def create_board(self) -> list[list[int]]:
-        """Skapa en spelplan"""
+        """Skapa en spelplan."""
         self.board = [[0 for _ in range(self.rows)] for _ in range(self.cols)]
         return self.board
 
-    def get_empty_cells(self):
+    def get_empty_cells(self) -> list[tuple[int, int]]:
+        """Returnera lista med tomma celler."""
         return [
             (row, col)
             for row in range(self.rows)
@@ -25,30 +26,35 @@ class Board:
             if self.board[row][col] == 0
         ]
 
-    def valid_move(self, row, col):
+    def valid_move(self, row: int, col: int) -> bool:
+        """Kolla om ett drag är godkänt, baserat på celler som inte är markerade."""
         return (row, col) in self.get_empty_cells()
 
-    def mark_cell(self, symbol, row, col):
+    def mark_cell(self, symbol: str, row: int, col: int) -> None:
+        """Markera en cell på spelplanen med X eller O."""
         self.board[row][col] = symbol
         self.marked_cells += 1
         self.ordered_moves.append((row, col))
 
-    def is_winning_move(self, symbol, move):
+    def is_winning_move(self, symbol: int, move: tuple[int, int]) -> bool:
+        """Kolla om ett drag är ett vinnande drag."""
         temp_board = copy.deepcopy(self)
         temp_board.mark_cell(symbol, *move)
 
         return temp_board.check_winner(symbol)
 
-    def board_full(self):
+    def board_full(self) -> None:
+        """Kolla om brädet är fullt."""
         return self.marked_cells == self.rows * self.cols
 
-    def is_terminal(self, player1_symbol, player2_symbol):
+    def is_terminal(self, player1_symbol: str, player2_symbol: str) -> bool:
+        """Kolla om någon spelare har vunnit eller om brädet är fullt."""
         if self.check_winner(player1_symbol) or self.check_winner(player2_symbol):
             return True
 
         return self.board_full()
 
-    def out_of_range(self, move) -> bool:
+    def out_of_range(self, move: tuple[int, int]) -> bool:
         return (
             (move[0] < 0)
             or (move[0] >= self.rows)
@@ -86,24 +92,6 @@ class Board:
                 sorted_moves.append(move)
 
         return sorted_moves
-
-    def get_row(self, row):
-        return self.board[row]
-
-    def get_column(self, col):
-        return [self.board[row][col] for row in range(self.rows)]
-
-    def get_diagonals(self):
-        diagonals = []
-        for row in range(self.rows - 5 + 1):
-            for col in range(self.cols - 5 + 1):
-                diagonals.append([self.board[row + i][col + i] for i in range(5)])
-
-        for row in range(self.rows - 5 + 1):
-            for col in range(4, self.cols):
-                diagonals.append([self.board[row + 1][col - i] for i in range(5)])
-
-        return diagonals
 
     def evaluate_board(self, player_symbol, opponent_symbol, depth):
         score = 0
