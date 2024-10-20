@@ -15,7 +15,8 @@ class Graphics:
         self.height = self.board.rows * self.cell_size
         self.screen = self.initialize_screen()
 
-    def calculate_cell_size(self):
+    def calculate_cell_size(self) -> int:
+        """Anpassa storleken på respektive cell efter skärmens storlek."""
         max_board_pixel_size = 800
         min_size = 40
         max_size = 700
@@ -26,7 +27,8 @@ class Graphics:
             max_size,
         )
 
-    def calculate_line_width(self):
+    def calculate_line_width(self) -> int:
+        """Anpassa bredden på linjerna efter storleken på en cell."""
         min_width = 1
         max_width = 10
         return min(max(self.cell_size // 15, min_width), max_width)
@@ -37,14 +39,14 @@ class Graphics:
         pygame.display.set_caption("Five in a Row")
         return screen
 
-    def draw_board(self):
+    def draw_board(self) -> None:
         """Rita upp brädet med markerade celler."""
         self.screen.fill(self.background_color)
         self.display_grid_lines()
         self.display_pieces()
         pygame.display.update()
 
-    def display_grid_lines(self):
+    def display_grid_lines(self) -> None:
         """Rita upp rutnätets linjer"""
         for col in range(1, self.board.cols):
             pygame.draw.line(
@@ -63,8 +65,8 @@ class Graphics:
                 self.line_width,
             )
 
-    def display_pieces(self):
-        """Rita upp figurerna X och O."""
+    def display_pieces(self) -> None:
+        """Rita ut figurerna X och O givet brädets nuvarande status."""
         for row in range(self.board.rows):
             for col in range(self.board.cols):
                 if self.board.board[row][col] == "X":
@@ -72,7 +74,7 @@ class Graphics:
                 elif self.board.board[row][col] == "O":
                     self.draw_circle(row, col)
 
-    def draw_cross(self, row, col):
+    def draw_cross(self, row: int, col: int) -> None:
         """Rita ett X i en given cell."""
         offset = self.cell_size // 5
         start_desc = (col * self.cell_size + offset, row * self.cell_size + offset)
@@ -95,7 +97,7 @@ class Graphics:
             self.screen, (66, 66, 66), start_asc, end_asc, self.line_width * 2
         )
 
-    def draw_circle(self, row, col):
+    def draw_circle(self, row: int, col: int) -> None:
         """Rita ett O i en given cell."""
         center = (
             col * self.cell_size + self.cell_size // 2,
@@ -106,15 +108,15 @@ class Graphics:
             self.screen, (66, 66, 66), center, radius, self.line_width * 2
         )
 
-    def draw_button(self, text, rect, color):
-        """Rita upp en knapp"""
+    def draw_button(self, text: str, rect, color) -> None:
+        """Rita upp en knapp."""
         pygame.draw.rect(self.screen, color, rect)
         font = pygame.font.Font(None, 40)
         text_surface = font.render(text, True, (255, 255, 255))
         text_rect = text_surface.get_rect(center=rect.center)
         self.screen.blit(text_surface, text_rect)
 
-    def choose_symbol(self):
+    def choose_symbol(self) -> list[str]:
         """Användaren väljer om den vill spela som X eller O."""
         x_button_color = (0, 128, 0)
         o_button_color = (128, 0, 0)
@@ -148,16 +150,16 @@ class Graphics:
                     if o_button_rect.collidepoint(mouse_pos):
                         return ["O", "X"]
 
-    def display_game_over_message(self, winner=None):
+    def display_game_over_message(self, winner=None) -> None:
         """Skriv ut meddelande när en spelomgång är över."""
-        message = "It's a draw!" if winner is None else f"{winner.name.upper()} WINS!"
+        message = "It's a draw!" if winner is None else f"{winner.symbol.upper()} WINS!"
         font = pygame.font.Font(None, 60)
         text = font.render(message, True, (255, 255, 255))
         text_rect = text.get_rect(center=(self.width // 2, self.height // 2))
         self.screen.blit(text, text_rect)
         pygame.display.update()
 
-    def wait_for_restart_or_quit(self):
+    def wait_for_restart_or_quit(self) -> bool:
         """Ge användaren möjligheten att spela igen eller avsluta."""
         font = pygame.font.Font(None, 30)
         play_again_text = font.render("PLAY AGAIN", True, (0, 0, 0))

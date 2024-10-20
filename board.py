@@ -18,7 +18,7 @@ class Board:
         return self.board
 
     def get_empty_cells(self) -> list[tuple[int, int]]:
-        """Returnera lista med tomma celler."""
+        """Returnera lista med tomma celler, dvs drag som inte gjorts."""
         return [
             (row, col)
             for row in range(self.rows)
@@ -41,7 +41,7 @@ class Board:
         temp_board = copy.deepcopy(self)
         temp_board.mark_cell(symbol, *move)
 
-        return temp_board.check_winner(symbol)
+        return temp_board.is_winner(symbol)
 
     def board_full(self) -> None:
         """Kolla om brädet är fullt."""
@@ -49,12 +49,13 @@ class Board:
 
     def is_terminal(self, player1_symbol: str, player2_symbol: str) -> bool:
         """Kolla om någon spelare har vunnit eller om brädet är fullt."""
-        if self.check_winner(player1_symbol) or self.check_winner(player2_symbol):
+        if self.is_winner(player1_symbol) or self.is_winner(player2_symbol):
             return True
 
         return self.board_full()
 
     def out_of_range(self, move: tuple[int, int]) -> bool:
+        """Givet ett drag, kontrollera om draget är inom brädets dimensioner."""
         return (
             (move[0] < 0)
             or (move[0] >= self.rows)
@@ -62,8 +63,8 @@ class Board:
             or (move[1] >= self.cols)
         )
 
-    def get_potential_moves(self, symbol) -> set[tuple[int, int]]:
-        """Returnera ett set med potentiella drag kring drag som redan genomförts"""
+    def get_potential_moves(self, symbol) -> list[tuple[int, int]]:
+        """Returnera en lista med potentiella drag kring drag som redan genomförts."""
         potential_moves = set()
 
         # Gränsvektorer för att kontrollera cellerna kring en given position (upp, ner, vänster, höger, diagonaler)
@@ -93,60 +94,73 @@ class Board:
 
         return sorted_moves
 
-    def evaluate_board(self, player_symbol, opponent_symbol, depth):
+    def evaluate_board(
+        self, player_symbol: str, opponent_symbol: str, depth: int
+    ) -> int:
         score = 0
         already_evaluated = set()
 
-        if self.check_winner(player_symbol):
-            return float("100000000") - depth
+        if self.is_winner(player_symbol):
+            return float("10000000") - depth
 
-        if self.check_winner(opponent_symbol):
-            return float("-100000000") + depth
+        if self.is_winner(opponent_symbol):
+            return float("-10000000") + depth
 
-        directions = [(1, 0), (0, 1), (1, 1), (-1, 1)]
+        directions = [(1, 0), (0, 1), (1, 1), (-1, 1)]  # Horizontal, vertical, diagonal
 
         for row in range(self.rows):
             for col in range(self.cols):
                 if self.board[row][col] != 0:
-                    continue
+                    continue  # Hoppa över redan markerade celler
 
                 for direction in directions:
+                    # Generera en unik key för respektive evaluerad "linje"
+                    line_key = (row, col, direction)
+                    if line_key in already_evaluated:
+                        continue  # Hoppa över redan evaluerade "linjer"
+
                     line_score = self.evaluate_line_with_defense(
                         row, col, direction, player_symbol, opponent_symbol
                     )
                     score += line_score
+                    already_evaluated.add(line_key)
 
-        return score
+        return score - depth
 
     def evaluate_line_with_defense(
-        self, row, col, direction, player_symbol, opponent_symbol
-    ):
-        """Evaluate a line from a starting position in a given direction for both offense and defense"""
+        self,
+        row: int,
+        col: int,
+        direction: tuple[int, int],
+        player_symbol: str,
+        opponent_symbol: str,
+    ) -> int:
+        """Evaluera en "linje" från en given position i en given riktning, där både offensiv och defensiv beaktas."""
         score = 0
 
-        # Evaluate the AI's lines (offensive)
-        ai_score = self.evaluate_direction(row, col, direction, player_symbol)
-        score += ai_score
+        # Evaluera den egna "linjen" (offensiv)
+        player_score = self.evaluate_direction(row, col, direction, player_symbol)
+        score += player_score
 
-        # Evaluate the opponent's lines (defensive)
+        # Evaluera motståndarens "linje" (defensiv)
         opponent_score = self.evaluate_direction(row, col, direction, opponent_symbol)
         score -= opponent_score
 
         return score
 
-    def evaluate_direction(self, row, col, direction, symbol):  # (Third gen)
-        """Evaluate a single line in a specific direction for a given player (symbol)"""
+    def evaluate_direction(
+        self, row: int, col: int, direction: tuple[int, int], symbol: str
+    ) -> int:
+        """Evaluera en "linje i en specifik riktning för en given spelare."""
         cur_len = 0
-        empty_count = 0
         blocked_start = False
         blocked_end = False
         max_range = self.win
 
         head = (row + direction[0], col + direction[1])
-        tail = (row - direction[0], col - direction[1])
-
+        # Evaluera framåt upp till max_range celler
         if not self.out_of_range(head):
-            while self.board[head[0]][head[1]] == symbol:
+            while self.board[head[0]][head[1]] == symbol and cur_len < max_range:
                 cur_len += 1
                 head = (head[0] + direction[0], head[1] + direction[1])
                 if self.out_of_range(head):
@@ -154,8 +168,10 @@ class Board:
             if self.out_of_range(head) or self.board[head[0]][head[1]] != 0:
                 blocked_end = True
 
+        tail = (row - direction[0], col - direction[1])
+        # Evaluera bakåt upp till max_range celler
         if not self.out_of_range(tail):
-            while self.board[tail[0]][tail[1]] == symbol:
+            while self.board[tail[0]][tail[1]] == symbol and cur_len < max_range:
                 cur_len += 1
                 tail = (tail[0] - direction[0], tail[1] - direction[1])
                 if self.out_of_range(tail):
@@ -163,9 +179,7 @@ class Board:
             if self.out_of_range(tail) or self.board[tail[0]][tail[1]] != 0:
                 blocked_start = True
 
-        if cur_len >= self.win:  # Winning move
-            return 100000000000
-
+        # Poängsättning baserat på antal symboler i rad
         score = 0
         if cur_len == 4:
             if not blocked_start and not blocked_end:
@@ -185,7 +199,7 @@ class Board:
 
         return score
 
-    def check_winner(self, player_symbol):
+    def is_winner(self, player_symbol: str) -> bool:
 
         for row in range(self.rows):
             for col in range(self.cols - self.win + 1):

@@ -20,23 +20,23 @@ class Game:
         self.running = True
 
     def switch_turns(self) -> None:
-        """Byt vilken spelares tur det är."""
+        """Byt vilken spelares tur det är att göra ett drag."""
         self.current_player = (
             self.player2 if self.current_player == self.player1 else self.player1
         )
 
     def is_game_over(self) -> bool:
-        """Kolla om en omgång är slut."""
+        """Kolla om en spelomgång är slut."""
         if self.board.is_terminal(self.player1.symbol, self.player2.symbol):
-            if self.board.check_winner(self.player1.symbol):
+            if self.board.is_winner(self.player1.symbol):
                 self.winner = self.player1
-            elif self.board.check_winner(self.player2.symbol):
+            elif self.board.is_winner(self.player2.symbol):
                 self.winner = self.player2
             else:
                 self.winner = None
             return True
 
-    def play_again(self):
+    def play_again(self) -> bool:
         """Kolla om användaren vill spela igen."""
         return self.graphics.wait_for_restart_or_quit()
 
@@ -59,12 +59,12 @@ class Game:
 
             # Kolla om en omgång är över
             if self.is_game_over():
-                self.graphics.draw_board()  # Redraw the final state of the board
+                self.graphics.draw_board()  
                 self.graphics.display_game_over_message(
                     self.winner
-                )  # Display winner message
+                )  
 
-                # Kolla om användaren vill spela igen
+                # Hantera om användaren vill spela igen
                 return self.play_again()
 
             # Byt vems tur det är att göra ett drag om omgången inte är över

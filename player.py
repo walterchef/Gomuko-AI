@@ -8,8 +8,7 @@ from board import *
 
 class Player(ABC):
 
-    def __init__(self, name: str, symbol: str) -> None:
-        self.name = name
+    def __init__(self, symbol: str) -> None:
         self.symbol = symbol
 
     @abstractmethod
@@ -19,8 +18,8 @@ class Player(ABC):
 
 class User_Player(Player):
 
-    def __init__(self, name: str, symbol: str) -> None:
-        super().__init__(name, symbol)
+    def __init__(self, symbol: str) -> None:
+        super().__init__(symbol)
 
     def make_move(self, board: list[list[int]], cell_size: int) -> tuple[int, int]:
         while True:
@@ -39,17 +38,17 @@ class AI_Player(Player):
     """Klass för spelare av typen AI."""
 
     def __init__(
-        self, name: str, symbol: str, difficulty: int = 2
+        self, symbol: str, difficulty: int = 2
     ) -> None:  
-        super().__init__(name, symbol)
+        super().__init__(symbol)
         self.opponent_symbol = "O" if symbol == "X" else "X"
         self.difficulty = difficulty
 
     def make_move(self, board: Board) -> tuple[int, int]:
-        if self.difficulty == 0:
+        if self.difficulty == 1:
             return self.random_move(board)
 
-        elif self.difficulty == 1 or self.difficulty == 2:
+        elif self.difficulty == 2:
 
             if board.marked_cells == 0:
                 move = (int(board.rows / 2), int(board.cols / 2))
@@ -66,7 +65,7 @@ class AI_Player(Player):
                     raise ValueError("AI could not find a valid move!")
             return move
 
-    def random_move(self, board: Board):
+    def random_move(self, board: Board) -> tuple[int, int]:
         empty_cells = board.get_empty_cells()
         return random.choice(empty_cells)
 
@@ -83,13 +82,13 @@ class AI_Player(Player):
         alpha: int,
         beta: int,
         maximizing,
-    ):  # depth och maxdepth
+    ) -> tuple[int, int]:  
         AI_Player.print_depth(depth, f"Enter Minimax: depth = {depth}")
 
         if depth == max_depth or board.is_terminal(self.symbol, self.opponent_symbol):
             board_score = board.evaluate_board(
                 self.symbol, self.opponent_symbol, depth
-            )  # + (-depth) if not maximizing else depth
+            ) 
 
             AI_Player.print_depth(depth, f"Exit Minimax, eval = {board_score}")
             return board_score, None
@@ -117,7 +116,7 @@ class AI_Player(Player):
                     max_eval = evaluation
                     best_move = move
 
-                alpha = max(alpha, max_eval)  # eval
+                alpha = max(alpha, max_eval) 
                 if beta <= alpha:
                     break
 
