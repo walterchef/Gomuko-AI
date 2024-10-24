@@ -116,7 +116,7 @@ class Graphics:
         text_rect = text_surface.get_rect(center=rect.center)
         self.screen.blit(text_surface, text_rect)
 
-    def choose_symbol(self) -> list[str]:
+    def choose_symbol(self) -> tuple[str, str]:
         """Användaren väljer om den vill spela som X eller O."""
         x_button_color = (0, 128, 0)
         o_button_color = (128, 0, 0)
@@ -146,9 +146,9 @@ class Graphics:
                 if event.type == pygame.MOUSEBUTTONDOWN:
                     mouse_pos = event.pos
                     if x_button_rect.collidepoint(mouse_pos):
-                        return ["X", "O"]
+                        return ("X", "O")
                     if o_button_rect.collidepoint(mouse_pos):
-                        return ["O", "X"]
+                        return ("O", "X")
 
     def display_game_over_message(self, winner=None) -> None:
         """Skriv ut meddelande när en spelomgång är över."""

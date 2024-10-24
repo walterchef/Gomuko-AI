@@ -5,26 +5,23 @@ from board import *
 
 
 def main() -> None:
-
-    is_playing = True
-
-    while is_playing: 
-    # Spela tills att en användare väljer att avsluta spelet.
-
+    """Spela tills att användaren väljer att avsluta spelet"""
+    while True:
         board = Board(19, 19, 5)
         graphics = Graphics(board)
-
-        symbols = graphics.choose_symbol()
-
-        user_symbol = symbols[0]
-        ai_symbol = symbols[1]
+        user_symbol, ai_symbol = graphics.choose_symbol()
 
         player1 = User_Player(user_symbol)
         player2 = AI_Player(ai_symbol)
         
-        game: Game = Game(board, graphics, player1, player2) # Instancering av en ny spelomgång 
+        # Instansiering av en ny spelomgång 
+        game: Game = Game(board, graphics, player1, player2) 
 
-        is_playing = game.play() # Fortsätt spela om användaren väljer att fortsätta, annars avsluta
+        game.play() 
+        
+        # Kontrollera om användaren vill spela igen, annars avsluta spelsessionen
+        if not game.play_again():
+            break
 
 
 if __name__ == "__main__":

@@ -20,14 +20,19 @@ class Game:
         self.running = True
 
     def switch_turns(self) -> None:
-        """Byt vilken spelares tur det är att göra ett drag."""
+        """Byt vilken spelares tur det är att göra ett drag för att kunna alternera under spelets gång.
+        """
         self.current_player = (
             self.player2 if self.current_player == self.player1 else self.player1
         )
 
     def is_game_over(self) -> bool:
-        """Kolla om en spelomgång är slut."""
-        if self.board.is_terminal(self.player1.symbol, self.player2.symbol):
+        """Kolla om en spelomgång är slut för att avgöra när omgången ska avslutas.
+
+        Returns:
+            bool: True om omgången är över annars False.
+        """
+        if self.board.is_terminal():
             if self.board.is_winner(self.player1.symbol):
                 self.winner = self.player1
             elif self.board.is_winner(self.player2.symbol):
@@ -36,38 +41,32 @@ class Game:
                 self.winner = None
             return True
 
-    def play_again(self) -> bool:
-        """Kolla om användaren vill spela igen."""
-        return self.graphics.wait_for_restart_or_quit()
-
-    def play(self) -> bool:
-        """Spela en omgång tills att den är slut."""
+    def play(self) -> None:
+        """Algoritmen för spelandet av en omgång, där två spelare alternerar att göra drag tills omgången är slut.
+        """
         while self.running:
-
             self.graphics.draw_board()
 
-            # Hantera den nuvarande spelarens drag
+            # Hanterande av den nuvarande spelarens drag
             if isinstance(self.current_player, AI_Player):
                 move = self.current_player.make_move(self.board)
             elif isinstance(self.current_player, User_Player):
-                move = self.current_player.make_move(
-                    self.board, self.graphics.cell_size
-                )
+                move = self.current_player.make_move(self.board, self.graphics.cell_size)
 
-            # Markera draget på brädet
-            self.board.mark_cell(self.current_player.symbol, move[0], move[1])
+            self.board.mark_cell(self.current_player.symbol, move)
 
-            # Kolla om en omgång är över
+            # Kontrollera om omgången är över efter varje drag
             if self.is_game_over():
-                self.graphics.draw_board()  
-                self.graphics.display_game_over_message(
-                    self.winner
-                )  
+                self.graphics.draw_board()
+                self.graphics.display_game_over_message(self.winner)
+                self.running = False
 
-                # Hantera om användaren vill spela igen
-                return self.play_again()
-
-            # Byt vems tur det är att göra ett drag om omgången inte är över
             self.switch_turns()
 
-        return False
+    def play_again(self) -> bool:
+        """Kontrollera om användaren vill spela ytterligare en omgång för att avgöra när spelsessionen ska stängas ner.
+
+        Returns:
+            bool: True om användaren vill spela igen annars False.
+        """
+        return self.graphics.wait_for_restart_or_quit()
