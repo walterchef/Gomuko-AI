@@ -1,5 +1,5 @@
 from hashing import *
-import copy
+import numpy as np
 
 
 class Board:
@@ -12,15 +12,12 @@ class Board:
         self.board = self.create_board()
         self.marked_cells = 0
         self.ordered_moves: list[tuple[int, int]] = []
+        self.zobrist_table = initTable(rows, cols)  # Initialize the Zobrist table
+        self.current_hash = compute_hash(self.board, self.zobrist_table)  # Initial hash
 
-    def create_board(self) -> list[list[int]]:
-        """Skapa en spelplan för att representera matchens tillstånd samt för att kunna visualisera spelplanen grafiskt.
-
-        Returns:
-            list[list[int]]: Brädet representerat av en 2 dimensionell lista.
-        """
-        self.board = [[0 for _ in range(self.rows)] for _ in range(self.cols)]
-        return self.board
+    def create_board(self) -> np.ndarray:
+        """Create the game board as a NumPy array for faster access."""
+        return np.full((self.rows, self.cols), "", dtype=object)
 
     def get_empty_cells(self) -> list[tuple[int, int]]:
         """Returnera drag som inte har gjorts, för att underlätta felhantering när vi ska kontrollera om ett drag är godkänt.
@@ -32,7 +29,7 @@ class Board:
             (row, col)
             for row in range(self.rows)
             for col in range(self.cols)
-            if self.board[row][col] == 0
+            if self.board[row][col] == ""
         ]
 
     def is_valid_move(self, move: tuple[int, int]) -> bool:
@@ -56,6 +53,40 @@ class Board:
         self.board[position[0]][position[1]] = symbol
         self.marked_cells += 1
         self.ordered_moves.append((position[0], position[1]))
+        
+    
+    def make_move_and_update_hash(self, move: tuple[int, int], symbol: str):
+        """Apply a move and update the Zobrist hash."""
+        row, col = move
+
+        # XOR out the current state of the cell (if not empty)
+        current_symbol = self.board[row][col]
+        self.current_hash ^= self.zobrist_table[row][col][index_of(current_symbol)]
+
+        # Make the move
+        self.board[row][col] = symbol
+        self.marked_cells += 1
+        self.ordered_moves.append(move)
+
+        # XOR in the new state
+        self.current_hash ^= self.zobrist_table[row][col][index_of(symbol)]
+
+    def undo_move_and_update_hash(self, move: tuple[int, int]):
+        """Undo a move and update the Zobrist hash."""
+        row, col = move
+        symbol = self.board[row][col]
+
+        # XOR out the current symbol
+        self.current_hash ^= self.zobrist_table[row][col][index_of(symbol)]
+
+        # Set cell back to empty
+        self.board[row][col] = ""
+        self.marked_cells -= 1
+        self.ordered_moves.pop()
+
+        # XOR in the empty state
+        self.current_hash ^= self.zobrist_table[row][col][index_of("")]
+
 
     def is_winning_move(self, symbol: int, move: tuple[int, int]) -> bool:
         """Kontrollera om ett drag är ett vinnande drag för att minska tiden AI:n tar på att göra vinnande drag.
@@ -67,10 +98,10 @@ class Board:
         Returns:
             bool: True om draget leder till vinst annars False.
         """
-        temp_board = copy.deepcopy(self)
-        temp_board.mark_cell(symbol, move)
-
-        return temp_board.is_winner(symbol)
+        self.make_move_and_update_hash(move, symbol)
+        result = self.is_winner(symbol)
+        self.undo_move_and_update_hash(move)
+        return result
 
     def board_full(self) -> True:
         """Kontrollera om brädet är fullt, vilken används för att kontrollera om en omgång är slut.
@@ -86,7 +117,8 @@ class Board:
         Returns:
             bool: True om brädstatusen är terminal annars False.
         """
-        return (self.is_winner("X") or self.is_winner("O")) if True else self.board_full()
+        return self.is_winner("X") or self.is_winner("O") or self.board_full()
+
     
 
     def get_potential_moves(self, symbol: str) -> list[tuple[int, int]]:
@@ -114,17 +146,20 @@ class Board:
 
                 if (
                     not self.out_of_range(neighbor)
-                    and self.board[neighbor[0]][neighbor[1]] == 0
+                    and self.board[neighbor[0]][neighbor[1]] == ""
                 ):
                     potential_moves.add(neighbor)
-
-        sorted_moves = []
-        for move in list(potential_moves):
+        
+        potential_moves = list(potential_moves)
+        
+        winning_moves = []
+        none_winning_moves = []
+        for move in potential_moves:
             if self.is_winning_move(symbol, move):
-                sorted_moves.insert(0, move)
+                winning_moves.append(move)
             else:
-                sorted_moves.append(move)
-
+                none_winning_moves.append(move)
+        sorted_moves = winning_moves + none_winning_moves
         return sorted_moves
 
     def evaluate_board(
@@ -143,10 +178,10 @@ class Board:
         already_evaluated = set()
 
         if self.is_winner(player_symbol):
-            return float("100000") 
+            return 1000000
 
         if self.is_winner(opponent_symbol):
-            return float("-100000")
+            return -1000000
 
         directions = [
             (1, 0),
@@ -157,7 +192,7 @@ class Board:
 
         for row in range(self.rows):
             for col in range(self.cols):
-                if self.board[row][col] != 0:
+                if self.board[row][col] != "":
                     continue  # Hoppa över redan markerade celler
 
                 for direction in directions:
@@ -194,16 +229,10 @@ class Board:
         Returns:
             int: Linjens värde, från offensivt och defensivt perspektiv
         """
-        score = 0
-
-        player_score = self.evaluate_direction(row, col, direction, player_symbol)
-        score += player_score
-
-        opponent_score = self.evaluate_direction(row, col, direction, opponent_symbol)
-        score -= opponent_score
-
+        score = self.evaluate_direction(row, col, direction, player_symbol)
+        score -= self.evaluate_direction(row, col, direction, opponent_symbol)
         return score
-    
+        
     def out_of_range(self, position: tuple[int, int]) -> bool:
         """Givet ett drag, kontrollera om draget är inom brädets dimensioner, vilket nyttjas vid iteration över brädet i evaluate_line metoden.
 
@@ -235,54 +264,65 @@ class Board:
             int: Linjens värde
         """
         
+        score = 0
         cur_len = 0
         blocked_start = False
         blocked_end = False
         max_range = self.to_win
 
-        head = (row + direction[0], col + direction[1])
-        # Evaluera i ena riktningen upp till max_range celler
-        if not self.out_of_range(head):
-            while self.board[head[0]][head[1]] == symbol and cur_len < max_range:
-                cur_len += 1
-                head = (head[0] + direction[0], head[1] + direction[1])
-                if self.out_of_range(head):
-                    break
-            if self.out_of_range(head) or self.board[head[0]][head[1]] != 0:
+        dr, dc = direction
+
+        # Forward direction
+        for i in range(1, max_range):
+            r = row + dr * i
+            c = col + dc * i
+            if not (0 <= r < self.rows and 0 <= c < self.cols):
                 blocked_end = True
-
-        tail = (row - direction[0], col - direction[1])
-        # Evaluera i andra riktningen upp till max_range celler
-        if not self.out_of_range(tail):
-            while self.board[tail[0]][tail[1]] == symbol and cur_len < max_range:
+                break
+            if self.board[r][c] == symbol:
                 cur_len += 1
-                tail = (tail[0] - direction[0], tail[1] - direction[1])
-                if self.out_of_range(tail):
-                    break
-            if self.out_of_range(tail) or self.board[tail[0]][tail[1]] != 0:
-                blocked_start = True
+            elif self.board[r][c] == "":
+                break
+            else:
+                blocked_end = True
+                break
 
-        # Poängsättning baserat på antal symboler i rad
-        score = 0
-        if cur_len == 4:
+        # Backward direction
+        for i in range(1, max_range):
+            r = row - dr * i
+            c = col - dc * i
+            if not (0 <= r < self.rows and 0 <= c < self.cols):
+                blocked_start = True
+                break
+            if self.board[r][c] == symbol:
+                cur_len += 1
+            elif self.board[r][c] == "":
+                break
+            else:
+                blocked_start = True
+                break
+
+        # Scoring based on cur_len and block status
+        # Early termination if maximum possible score is achieved
+        if cur_len == self.to_win - 1:
             if not blocked_start and not blocked_end:
-                score = 10000
+                return 10000
             elif not blocked_start or not blocked_end:
-                score = 5000
-        elif cur_len == 3:
+                return 5000
+        elif cur_len == self.to_win - 2:
             if not blocked_start and not blocked_end:
-                score = 1000
+                return 1000
             elif not blocked_start or not blocked_end:
-                score = 500
-        elif cur_len == 2:
+                return 500
+        elif cur_len == self.to_win - 3:
             if not blocked_start and not blocked_end:
-                score = 100
+                return 100
             elif not blocked_start or not blocked_end:
-                score = 50
+                return 50
 
         return score
 
-    def is_winner(self, player_symbol: str) -> bool:
+    def is_winner(self, symbol: str) -> bool:
         """Evaluera om en spelare vunnit givet dess symbol, för att kunna veta när en omgång ska avslutas samt vilka drag som AI:n ska prioritera.
 
         Args:
@@ -292,36 +332,35 @@ class Board:
             bool: True om spelaren vunnit eller False om spelaren inte vunnit
         """
 
+        # Horizontal
         for row in range(self.rows):
-            for col in range(self.cols - self.to_win + 1):
-                if all(
-                    self.board[row][col + i] == player_symbol
-                    for i in range(self.to_win)
-                ):
-                    return True
-
+            if self.check_consecutive(symbol, self.board[row, :]):
+                return True
+        # Vertical
         for col in range(self.cols):
-            for row in range(self.rows - self.to_win + 1):
-                if all(
-                    self.board[row + i][col] == player_symbol
-                    for i in range(self.to_win)
-                ):
-                    return True
+            if self.check_consecutive(symbol, self.board[:, col]):
+                return True
+        # Diagonal (top-left to bottom-right)
+        for offset in range(-self.rows + 1, self.cols):
+            diag = self.board.diagonal(offset)
+            if self.check_consecutive(symbol, diag):
+                return True
+        # Diagonal (top-right to bottom-left)
+        for offset in range(-self.rows + 1, self.cols):
+            diag = np.fliplr(self.board).diagonal(offset)
+            if self.check_consecutive(symbol, diag):
+                return True
+        return False
 
-        for row in range(self.rows - self.to_win + 1):
-            for col in range(self.cols - self.to_win + 1):
-                if all(
-                    self.board[row + i][col + i] == player_symbol
-                    for i in range(self.to_win)
-                ):
-                    return True
 
-        for row in range(self.to_win - 1, self.rows):
-            for col in range(self.cols - self.to_win + 1):
-                if all(
-                    self.board[row - i][col + i] == player_symbol
-                    for i in range(self.to_win)
-                ):
+    def check_consecutive(self, symbol: str, array: np.ndarray) -> bool:
+        """Check if there are `to_win` consecutive symbols in the array."""
+        count = 0
+        for cell in array:
+            if cell == symbol:
+                count += 1
+                if count >= self.to_win:
                     return True
-
+            else:
+                count = 0
         return False

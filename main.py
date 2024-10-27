@@ -7,7 +7,7 @@ from board import *
 def main() -> None:
     """Spela tills att användaren väljer att avsluta spelet"""
     while True:
-        board = Board(19, 19, 5)
+        board = Board(15, 15, 5)
         graphics = Graphics(board)
         user_symbol, ai_symbol = graphics.choose_symbol()
 
