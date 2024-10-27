@@ -27,7 +27,7 @@ def compute_hash(board: np.ndarray, zobrist_table: list) -> int:
     for i in range(len(board)):
         for j in range(len(board[0])):
             piece = index_of(board[i][j])
-            if piece != "":
+            if piece != -1:
                 h ^= zobrist_table[i][j][piece]
     return h
 

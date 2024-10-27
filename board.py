@@ -53,6 +53,8 @@ class Board:
         self.board[position[0]][position[1]] = symbol
         self.marked_cells += 1
         self.ordered_moves.append((position[0], position[1]))
+        self.current_hash = compute_hash(self.board, self.zobrist_table)
+        
         
     
     def make_move_and_update_hash(self, move: tuple[int, int], symbol: str) -> None:
