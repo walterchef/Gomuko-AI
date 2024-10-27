@@ -49,7 +49,7 @@ class AI_Player(Player):
     """Klass för spelare av typen AI."""
 
     def __init__(
-        self, symbol: str, max_depth: int = 2, trans_table_size: int = 100000, debug: bool = False
+        self, symbol: str, max_depth: int = 3, trans_table_size: int = 100000, debug: bool = False
     ) -> None:  
         super().__init__(symbol)
         self.opponent_symbol = "O" if symbol == "X" else "X"
@@ -131,15 +131,16 @@ class AI_Player(Player):
         if depth == max_depth or board.is_terminal():
             if board.current_hash in self.transposition_table:
                 stored_score = self.transposition_table[board.current_hash]
+                weighted_score = self.weighted_board_score(stored_score, depth)
                 AI_Player.print_depth(depth, f"Transposition hit: {stored_score}", self.debug)
-                return stored_score
+                return weighted_score
             else:
                 board_score = board.evaluate_board(
                     self.symbol, self.opponent_symbol
                 )
                 weighted_score = self.weighted_board_score(board_score, depth)
                 AI_Player.print_depth(depth, f"Exit Minimax, eval = {board_score}", self.debug)
-                self.store_transposition(board.current_hash, weighted_score)
+                self.store_transposition(board.current_hash, board_score)
                 return weighted_score
 
         potential_moves = (

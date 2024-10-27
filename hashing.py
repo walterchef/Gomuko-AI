@@ -1,30 +1,36 @@
-import random
+from random import *
+import numpy as np
 
-def index_of(symbol):
+def index_of(symbol: str) -> int:
+    """Map symbols to indices for Zobrist hashing."""
     if symbol == "X":
-        return 1
-    elif symbol == "O":
-        return 2
-    else:
         return 0
+    elif symbol == "O":
+        return 1
+    else:
+        return -1  # Empty
 
-def initTable(rows, cols):
-    """Initialize the Zobrist table with random 64-bit integers."""
-    zobrist_table = [
-        [
-            [random.getrandbits(64) for _ in range(3)]  # For symbols: 0, "X", "O"
-            for _ in range(cols)
-        ]
-        for _ in range(rows)
-    ]
-    return zobrist_table
 
-def compute_hash(board, zobrist_table):
+def randomInt():
+    min = 0
+    max = pow(2, 64)
+    return randint(min, max)
+
+def initTable(rows: int, cols: int) -> list:
+    ZobristTable = [[[randomInt() for k in range(2)] for j in range(rows)] for i in range(cols)]
+    return ZobristTable
+
+
+def compute_hash(board: np.ndarray, zobrist_table: list) -> int:
     """Compute the Zobrist hash for the current board state."""
     h = 0
     for i in range(len(board)):
         for j in range(len(board[0])):
             piece = index_of(board[i][j])
-            if piece != 0:
+            if piece != "":
                 h ^= zobrist_table[i][j][piece]
     return h
+
+
+test = initTable(5,5)
+print(test)

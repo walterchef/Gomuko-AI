@@ -55,36 +55,35 @@ class Board:
         self.ordered_moves.append((position[0], position[1]))
         
     
-    def make_move_and_update_hash(self, move: tuple[int, int], symbol: str):
-        """Apply a move and update the Zobrist hash."""
+    def make_move_and_update_hash(self, move: tuple[int, int], symbol: str) -> None:
         row, col = move
-
-        # XOR out the current state of the cell (if not empty)
         current_symbol = self.board[row][col]
+                
+        # XOR out the current symbol
         self.current_hash ^= self.zobrist_table[row][col][index_of(current_symbol)]
-
+        
         # Make the move
         self.board[row][col] = symbol
         self.marked_cells += 1
         self.ordered_moves.append(move)
-
-        # XOR in the new state
+        
+        # XOR in the new symbol
         self.current_hash ^= self.zobrist_table[row][col][index_of(symbol)]
 
-    def undo_move_and_update_hash(self, move: tuple[int, int]):
-        """Undo a move and update the Zobrist hash."""
+
+    def undo_move_and_update_hash(self, move: tuple[int, int]) -> None:
         row, col = move
         symbol = self.board[row][col]
-
-        # XOR out the current symbol
+        
+        # XOR out the symbol
         self.current_hash ^= self.zobrist_table[row][col][index_of(symbol)]
-
-        # Set cell back to empty
+        
+        # Undo the move
         self.board[row][col] = ""
         self.marked_cells -= 1
         self.ordered_moves.pop()
-
-        # XOR in the empty state
+                
+        # XOR in the empty symbol
         self.current_hash ^= self.zobrist_table[row][col][index_of("")]
 
 
@@ -182,6 +181,9 @@ class Board:
 
         if self.is_winner(opponent_symbol):
             return -1000000
+        
+        if self.board_full():
+            return 0
 
         directions = [
             (1, 0),
