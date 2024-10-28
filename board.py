@@ -1,5 +1,6 @@
 from hashing import *
 import copy
+from utils import *
 
 
 class Board:
@@ -12,6 +13,9 @@ class Board:
         self.board = self.create_board()
         self.marked_cells = 0
         self.ordered_moves: list[tuple[int, int]] = []
+        self.pattern_dict = create_pattern_dict()
+        self.zobrist_table = initTable(rows, cols)  # Initialize the Zobrist table
+        self.current_hash = compute_hash(self.board, self.zobrist_table)  # Initial hash
 
     def create_board(self) -> list[list[int]]:
         """Skapa en spelplan för att representera matchens tillstånd samt för att kunna visualisera spelplanen grafiskt.
@@ -56,6 +60,51 @@ class Board:
         self.board[position[0]][position[1]] = symbol
         self.marked_cells += 1
         self.ordered_moves.append((position[0], position[1]))
+        
+    
+    def undo_move(self, move: tuple[int, int]):
+        self.board[move[0]][move[1]] = 0
+        self.marked_cells -= 1
+        self.ordered_moves.remove((move[0], move[1]))
+        
+        
+    def make_move_and_update_hash(self, symbol: str, move: tuple[int, int]) -> None:
+        row, col = move
+        
+        # XOR out the current symbol (if any) from the hash before changing the board state
+        current_symbol = self.board[row][col]
+        if current_symbol != 0:  # Only remove if there is an actual piece
+            self.current_hash ^= self.zobrist_table[row][col][index_of(current_symbol)]
+        
+        # Apply the move on the board
+        self.board[row][col] = symbol
+        
+        # XOR in the new symbol to update the hash to match the new board state
+        self.current_hash ^= self.zobrist_table[row][col][index_of(symbol)]
+        
+        # Track the move
+        self.marked_cells += 1
+        self.ordered_moves.append(move)
+
+        
+    
+    def undo_move_and_update_hash(self, move: tuple[int, int]) -> None:
+        row, col = move
+        symbol = self.board[row][col]
+        
+        # XOR out the current symbol from the hash
+        self.current_hash ^= self.zobrist_table[row][col][index_of(symbol)]
+        
+        # Remove the piece from the board
+        self.board[row][col] = 0  # Set back to empty
+        
+        # XOR in the "empty" symbol to reflect that the cell is now empty
+        self.current_hash ^= self.zobrist_table[row][col][index_of(0)]
+        
+        # Track the undo
+        self.marked_cells -= 1
+        self.ordered_moves.remove(move)
+
 
     def is_winning_move(self, symbol: int, move: tuple[int, int]) -> bool:
         """Kontrollera om ett drag är ett vinnande drag för att minska tiden AI:n tar på att göra vinnande drag.
@@ -67,10 +116,10 @@ class Board:
         Returns:
             bool: True om draget leder till vinst annars False.
         """
-        temp_board = copy.deepcopy(self)
-        temp_board.mark_cell(symbol, move)
-
-        return temp_board.is_winner(symbol)
+        self.mark_cell(symbol, move)
+        result = self.is_winner(symbol)
+        self.undo_move(symbol, move)
+        return result
 
     def board_full(self) -> True:
         """Kontrollera om brädet är fullt, vilken används för att kontrollera om en omgång är slut.
@@ -98,34 +147,26 @@ class Board:
         Returns:
             list[tuple[int, int]]: Drag dikt an drag som redan gjorts.
         """
-        potential_moves = set()
-
-        # Gränsvektorer för att kontrollera cellerna kring en given position (upp, ner, vänster, höger, diagonaler)
+        potential_moves = {}
         directions = [
-            (dx, dy)
-            for dx in [-1, 0, 1]
-            for dy in [-1, 0, 1]
-            if not (dx == 0 and dy == 0)
+            (1, 0), (0, 1), (1, 1), (1, -1),
+            (-1, 0), (0, -1), (-1, -1), (-1, 1)
         ]
+        
 
         for move in self.ordered_moves:
             for direction in directions:
                 neighbor = (move[0] + direction[0], move[1] + direction[1])
 
-                if (
-                    not self.out_of_range(neighbor)
-                    and self.board[neighbor[0]][neighbor[1]] == 0
-                ):
-                    potential_moves.add(neighbor)
+                if self.out_of_range(neighbor) or self.board[neighbor[0]][neighbor[1]] != 0:
+                    continue
 
-        sorted_moves = []
-        for move in list(potential_moves):
-            if self.is_winning_move(symbol, move):
-                sorted_moves.insert(0, move)
-            else:
-                sorted_moves.append(move)
+                # Calculate score based on neighbor proximity to the current move
+                score = self.evaluate_move_increment(neighbor, symbol, "O" if symbol == "X" else "X")
+                potential_moves[neighbor] = score
 
-        return sorted_moves
+        # Sort moves by score in descending order
+        return sorted(potential_moves, key=potential_moves.get, reverse=True)
 
     def evaluate_board(
         self, player_symbol: str, opponent_symbol: str
@@ -139,70 +180,100 @@ class Board:
         Returns:
             int: Brädets relativa värde
         """
+        
         score = 0
-        already_evaluated = set()
-
-        if self.is_winner(player_symbol):
-            return float("100000") 
-
-        if self.is_winner(opponent_symbol):
-            return float("-100000")
-
         directions = [
-            (1, 0),
-            (0, 1),
-            (1, 1),
-            (-1, 1),
-        ]  # Horisontellt, vertikalt, diagonaler
-
+            (1, 0),   # Horizontal
+            (0, 1),   # Vertical
+            (1, 1),   # Diagonal down-right
+            (1, -1)   # Diagonal up-right
+        ]
+        
+        # Convert symbols to a map for pattern matching
+        symbol_map = {
+            player_symbol: 1,
+            opponent_symbol: -1,
+            0: 0
+        }
         for row in range(self.rows):
             for col in range(self.cols):
-                if self.board[row][col] != 0:
-                    continue  # Hoppa över redan markerade celler
+                if self.board[row][col] == 0:
+                    continue  # Skip empty cells
 
                 for direction in directions:
-                    # Generera en unik key för respektive evaluerad "linje"
-                    line_key = (row, col, direction)
-                    if line_key in already_evaluated:
-                        continue  # Hoppa över redan evaluerade "linjer"
+                    # Collect cells along the direction in a list, mapped to symbol_map values
+                    line = []
+                    for i in range(-self.to_win + 1, self.to_win):
+                        r, c = row + i * direction[0], col + i * direction[1]
+                        if 0 <= r < self.rows and 0 <= c < self.cols:
+                            line.append(symbol_map.get(self.board[r][c], 0))
+                        else:
+                            line.append(None)  # Out of bounds
+                    
+                    # Only keep the valid section of the line within the board
+                    valid_line = tuple(cell for cell in line if cell is not None)
 
-                    line_score = self.evaluate_line_with_defense(
-                        row, col, direction, player_symbol, opponent_symbol
-                    )
-                    score += line_score
-                    already_evaluated.add(line_key)
+                    # Match patterns in the valid section of the line
+                    for pattern, pattern_score in self.pattern_dict.items():
+                        # Check if the pattern matches a substring in the line
+                        for i in range(len(valid_line) - len(pattern) + 1):
+                            if tuple(valid_line[i:i + len(pattern)]) == pattern:
+                                score += pattern_score
 
         return score
+    
 
-    def evaluate_line_with_defense(
-        self,
-        row: int,
-        col: int,
-        direction: tuple[int, int],
-        player_symbol: str,
-        opponent_symbol: str,
-    ) -> int:
-        """Evaluera en "linje" från en given position i en given riktning, där både offensiv och defensiv beaktas.
-
-        Args:
-            row (int): Evaluerad rad
-            col (int): Evaluerad kolumn
-            direction (tuple[int, int]): Evaluerad riktning (Horisontellt, vertikalt eller diagonalt)
-            player_symbol (str): Spelarens symbol
-            opponent_symbol (str): Motspelarens symbol
-
-        Returns:
-            int: Linjens värde, från offensivt och defensivt perspektiv
+    def evaluate_move_increment(self, last_move: tuple[int, int], player_symbol: int, opponent_symbol: int) -> int:
         """
+        Calculate the incremental board score resulting from a move, considering patterns around the last move.
+        
+        Args:
+            last_move (tuple[int, int]): Coordinates of the last move.
+            player_symbol (int): Symbol for the AI player (e.g., 1).
+            opponent_symbol (int): Symbol for the opponent (e.g., -1).
+        
+        Returns:
+            int: Incremental score change from the move.
+        """
+        row, col = last_move
         score = 0
+        directions = [
+            (1, 0),   # Horizontal
+            (0, 1),   # Vertical
+            (1, 1),   # Diagonal down-right
+            (1, -1)   # Diagonal up-right
+        ]
+        
+        # Map symbols to their pattern values (1, -1, 0)
+        symbol_map = {
+            player_symbol: 1,
+            opponent_symbol: -1,
+            0: 0
+        }
 
-        player_score = self.evaluate_direction(row, col, direction, player_symbol)
-        score += player_score
+        # Evaluate patterns in all directions around the last move
+        for direction in directions:
+            line = []
+            for i in range(-self.to_win + 1, self.to_win):
+                r, c = row + i * direction[0], col + i * direction[1]
+                if 0 <= r < self.rows and 0 <= c < self.cols:
+                    line.append(symbol_map.get(self.board[r][c], 0))  # Map symbols using symbol_map
+                else:
+                    line.append(None)  # Out of bounds
 
-        opponent_score = self.evaluate_direction(row, col, direction, opponent_symbol)
-        score -= opponent_score
+            # Only keep the valid part of the line within board boundaries
+            valid_line = tuple(cell for cell in line if cell is not None)
+
+            # Match patterns in the valid section of the line
+            for pattern, pattern_score in self.pattern_dict.items():
+                # Check if the pattern matches a substring in the line
+                for i in range(len(valid_line) - len(pattern) + 1):
+                    if tuple(valid_line[i:i + len(pattern)]) == pattern:
+                        score += pattern_score
 
         return score
+
+
     
     def out_of_range(self, position: tuple[int, int]) -> bool:
         """Givet ett drag, kontrollera om draget är inom brädets dimensioner, vilket nyttjas vid iteration över brädet i evaluate_line metoden.
@@ -220,67 +291,6 @@ class Board:
             or (position[1] >= self.cols)
         )
 
-    def evaluate_direction(
-        self, row: int, col: int, direction: tuple[int, int], symbol: str) -> int:
-        """Utvärderar en linje i en specifik riktning för att avgöra hur stark positionen är
-        är för den givna spelarsymbolen. Detta för att kunna evaluera hela brädet.
-
-        Args:
-            row (int): Evaluerad rad
-            col (int): Evaluerad kolumn
-            direction (tuple[int, int]): Evaluerad riktning (Horisontellt, vertikalt eller diagonalt)
-            symbol (str): Spelarens symbol
-
-        Returns:
-            int: Linjens värde
-        """
-        
-        cur_len = 0
-        blocked_start = False
-        blocked_end = False
-        max_range = self.to_win
-
-        head = (row + direction[0], col + direction[1])
-        # Evaluera i ena riktningen upp till max_range celler
-        if not self.out_of_range(head):
-            while self.board[head[0]][head[1]] == symbol and cur_len < max_range:
-                cur_len += 1
-                head = (head[0] + direction[0], head[1] + direction[1])
-                if self.out_of_range(head):
-                    break
-            if self.out_of_range(head) or self.board[head[0]][head[1]] != 0:
-                blocked_end = True
-
-        tail = (row - direction[0], col - direction[1])
-        # Evaluera i andra riktningen upp till max_range celler
-        if not self.out_of_range(tail):
-            while self.board[tail[0]][tail[1]] == symbol and cur_len < max_range:
-                cur_len += 1
-                tail = (tail[0] - direction[0], tail[1] - direction[1])
-                if self.out_of_range(tail):
-                    break
-            if self.out_of_range(tail) or self.board[tail[0]][tail[1]] != 0:
-                blocked_start = True
-
-        # Poängsättning baserat på antal symboler i rad
-        score = 0
-        if cur_len == 4:
-            if not blocked_start and not blocked_end:
-                score = 10000
-            elif not blocked_start or not blocked_end:
-                score = 5000
-        elif cur_len == 3:
-            if not blocked_start and not blocked_end:
-                score = 1000
-            elif not blocked_start or not blocked_end:
-                score = 500
-        elif cur_len == 2:
-            if not blocked_start and not blocked_end:
-                score = 100
-            elif not blocked_start or not blocked_end:
-                score = 50
-
-        return score
 
     def is_winner(self, player_symbol: str) -> bool:
         """Evaluera om en spelare vunnit givet dess symbol, för att kunna veta när en omgång ska avslutas samt vilka drag som AI:n ska prioritera.
@@ -325,3 +335,4 @@ class Board:
                     return True
 
         return False
+

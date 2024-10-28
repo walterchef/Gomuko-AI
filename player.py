@@ -3,6 +3,7 @@ import copy
 import sys
 import random
 from abc import ABC, abstractmethod
+from collections import OrderedDict
 from board import *
 
 
@@ -48,11 +49,14 @@ class AI_Player(Player):
     """Klass för spelare av typen AI."""
 
     def __init__(
-        self, symbol: str, max_depth: int = 2
+        self, symbol: str, max_depth: int = 2, trans_table_size: int = 100000, debug: bool = False
     ) -> None:  
         super().__init__(symbol)
         self.opponent_symbol = "O" if symbol == "X" else "X"
         self.max_depth = max_depth
+        self.debug = debug
+        self.transposition_table = OrderedDict()
+        self.trans_table_size = trans_table_size
 
     def make_move(self, board: Board) -> tuple[int, int]:
         """Returnera AI:ns drag baserat på svårighetsgraden.
@@ -65,29 +69,37 @@ class AI_Player(Player):
         """
 
         if board.marked_cells == 0:
-            move = (int(board.rows / 2), int(board.cols / 2))
-        else:
-            move = self.minimax(
+            # First move: choose the center
+            move = (board.rows // 2, board.cols // 2)
+            return move
+
+        best_score = float("-inf")
+        best_move = None
+
+        potential_moves = board.get_potential_moves(self.symbol)
+
+        for move in potential_moves:
+            board.make_move_and_update_hash(self.symbol, move)
+            score = self.minimax(
                 board,
-                depth=0,
+                depth=0,  
                 max_depth=self.max_depth,
                 alpha=float("-inf"),
                 beta=float("inf"),
-                maximizing=True,
-            )[1]
-            if move is None:
-                raise ValueError("AI could not find a valid move!")
-        return move    
-    
+                maximizing=False,  
+            )
+            board.undo_move_and_update_hash(move)
+                                        
+                                    
 
-    @staticmethod
-    def weighted_board_score(score, depth):
-        if score == 1000000:
-            return score - depth
-        elif score == -1000000:
-            return score + depth
-        else:
-            return score
+            if score > best_score:
+                best_score = score
+                best_move = move
+
+        if best_move is None:
+            raise ValueError("AI could not find a valid move!")
+        
+        return best_move
         
     def minimax(
         self,
@@ -111,18 +123,20 @@ class AI_Player(Player):
         Returns:
             tuple[int, int]: Bästa draget AI:n kan göra (row, col)
         """
-        AI_Player.print_depth(depth, f"Enter Minimax: depth = {depth}")
+        
+        if board.current_hash in self.transposition_table:
+                stored_score = self.transposition_table[board.current_hash]
+                return stored_score
 
-        if depth == max_depth or board.is_terminal(): # Evaluera brädets poäng när vi nått maximalt djup eller ett terminalt stadie.
-            board_score = board.evaluate_board(
-                self.symbol, self.opponent_symbol
-            )
-            
-            AI_Player.print_depth(depth, f"Exit Minimax, eval = {board_score}")
-            return self.weighted_board_score(board_score, depth), None
+        if depth == max_depth or board.is_terminal():
+                board_score = board.evaluate_board(
+                    self.symbol, self.opponent_symbol
+                )
+                #weighted_score = self.weighted_board_score(board_score, depth)
+                self.store_transposition(board.current_hash, board_score)
+                return board_score
 
 
-        best_move = None
         potential_moves = (
             board.get_potential_moves(self.symbol)
             if board.marked_cells != 0
@@ -134,60 +148,78 @@ class AI_Player(Player):
 
             # Iteration över möjliga drag
             for move in potential_moves: 
-                temp_board = copy.deepcopy(board)
-                temp_board.mark_cell(self.symbol, move)
-                AI_Player.print_depth(depth, f"move = {move}")
+                board.make_move_and_update_hash(self.symbol, move)
+
 
                 # Rekursivt anrop av funktionen
                 evaluation = self.minimax(
-                    temp_board, depth + 1, max_depth, alpha, beta, False
-                )[0]
-
+                    board, depth + 1, max_depth, alpha, beta, False
+                )
+                board.undo_move_and_update_hash(move)
+                
                 if evaluation > max_eval:
                     max_eval = evaluation
-                    best_move = move
                     
                 # Alpha-Beta pruning för att minska antalet noder som behöver evalueras.
                 alpha = max(alpha, max_eval) 
                 if beta <= alpha:
                     break
 
-            AI_Player.print_depth(
-                depth, f"Exit Minimax, eval = {max_eval}, best move = {best_move}"
-            )
-
-            return max_eval, best_move
+            return max_eval
 
         if not maximizing:
             min_eval = float("inf") # Sämsta möjliga evalueringen för den minimerande spelaren
 
             # Iteration över möjliga drag
             for move in potential_moves: 
-                temp_board = copy.deepcopy(board)
-                temp_board.mark_cell(self.opponent_symbol, move)
-                AI_Player.print_depth(depth, f"move = {move}")
+                board.make_move_and_update_hash(self.opponent_symbol, move)
+
                 
                 #Rekursivt anrop av funktionen
                 evaluation = self.minimax(
-                    temp_board, depth + 1, max_depth, alpha, beta, True
-                )[0]
-
+                    board, depth + 1, max_depth, alpha, beta, True
+                )
+                board.undo_move_and_update_hash(move)
+                
                 if evaluation < min_eval:
                     min_eval = evaluation
-                    best_move = move
 
                 # Alpha-Beta pruning för att minska antalet noder som behöver evalueras
                 beta = min(beta, min_eval) 
                 if beta <= alpha:
                     break
 
-            AI_Player.print_depth(
-                depth, f"Exit Minimax, eval = {min_eval}, best move = {best_move}"
-            )
 
-            return min_eval, best_move
+            return min_eval
 
 
     def print_depth(depth, str):
         indent = "  " * (3 - depth)
         print(indent + str)
+    
+    
+    @staticmethod
+    def weighted_board_score(score, depth):
+        return score
+        if score >= 1000000:
+            return score - depth
+        elif score <= -1000000:
+            return score + depth
+        else:
+            return score
+        
+    
+    def store_transposition(self, current_hash: int, score: float) -> None:
+        """Store the evaluated score in the transposition table with size limit."""
+        if current_hash in self.transposition_table:
+            # Move to the end to show that it was recently used
+            self.transposition_table.move_to_end(current_hash)
+            return  # Already stored
+    
+        if len(self.transposition_table) >= self.trans_table_size:
+            # Remove the first (least recently used) item
+            self.transposition_table.popitem(last=False)
+    
+        self.transposition_table[current_hash] = score
+
+

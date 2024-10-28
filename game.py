@@ -53,7 +53,7 @@ class Game:
             elif isinstance(self.current_player, User_Player):
                 move = self.current_player.make_move(self.board, self.graphics.cell_size)
 
-            self.board.mark_cell(self.current_player.symbol, move)
+            self.board.make_move_and_update_hash(self.current_player.symbol, move)
 
             # Kontrollera om omgången är över efter varje drag
             if self.is_game_over():
