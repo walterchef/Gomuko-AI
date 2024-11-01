@@ -1,19 +1,27 @@
 import pygame
-import copy
 import sys
-import random
 from abc import ABC, abstractmethod
 from collections import OrderedDict
 from board import *
+from graphics import *
 
 
 class Player(ABC):
+    """Abstrakt basspelarklass"""
 
     def __init__(self, symbol: str) -> None:
         self.symbol = symbol
 
     @abstractmethod
     def make_move(self, board: list[list[int]]) -> tuple[int, int]:
+        """Abstrakt metod som måste implementeras i basspelarklassens underklasser.
+
+        Args:
+            board (list[list[int]]): Logisk representation av spelbrädet.
+
+        Returns:
+            tuple[int, int]: Cell på spelbrädet (rad, kolumn)
+        """
         pass
 
 
@@ -23,17 +31,19 @@ class User_Player(Player):
     def __init__(self, symbol: str) -> None:
         super().__init__(symbol)
 
-    def make_move(self, board: list[list[int]], cell_size: int) -> tuple[int, int]:
-        """Returnera användarens drag baserat på vilken cell på spelplanen användaren klickar på.
+    def make_move(self, board: Board, cell_size: int) -> tuple[int, int]:
+        """Returnerar användarens drag baserat på vilken cell på spelplanen användaren klickar på.
 
         Args:
-            board (list[list[int]]): Logisk representation av brädet
-            cell_size (int): Storleken av en cell i x*y pixlar
+            board (Board): Logisk representation av spelbrädet.
+            cell_size (int): Storleken av en cell i x*y pixlar.
 
         Returns:
-            tuple[int, int]: Användarens drag (row, col)
+            tuple[int, int]: Användarens drag (rad, kolumn).
         """
-        while True:
+        
+        valid_move = False
+        while not valid_move:
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:
                     sys.exit()
@@ -49,177 +59,135 @@ class AI_Player(Player):
     """Klass för spelare av typen AI."""
 
     def __init__(
-        self, symbol: str, max_depth: int = 2, trans_table_size: int = 100000, debug: bool = False
-    ) -> None:  
+        self, symbol: str, depth: int = 3, trans_table_size: int = 10000
+    ) -> None:
         super().__init__(symbol)
         self.opponent_symbol = "O" if symbol == "X" else "X"
-        self.max_depth = max_depth
-        self.debug = debug
+        self.depth = depth
         self.transposition_table = OrderedDict()
         self.trans_table_size = trans_table_size
 
     def make_move(self, board: Board) -> tuple[int, int]:
-        """Returnera AI:ns drag baserat på svårighetsgraden.
+        """Returnerar AI:ns drag.
 
         Args:
-            board (Board): Logisk representation av spelbrädet
+            board (Board): Logisk representation av spelbrädet.
 
         Returns:
-            tuple[int, int]: AI:ns drag (row, col)
+            tuple[int, int]: AI:ns drag (rad, kolumn)
         """
 
         if board.marked_cells == 0:
-            # First move: choose the center
-            move = (board.rows // 2, board.cols // 2)
-            return move
-
-        best_score = float("-inf")
-        best_move = None
-
-        potential_moves = board.get_potential_moves(self.symbol)
-
-        for move in potential_moves:
-            board.make_move_and_update_hash(self.symbol, move)
-            score = self.minimax(
+            move = (int(board.rows / 2), int(board.cols / 2))
+        else:
+            move = self.get_best_move(
                 board,
-                depth=0,  
-                max_depth=self.max_depth,
+                depth=self.depth,
                 alpha=float("-inf"),
                 beta=float("inf"),
-                maximizing=False,  
-            )
-            board.undo_move_and_update_hash(move)
-                                        
-                                    
+                maximizing=True,
+            )[1]
+            
+        return move
 
-            if score > best_score:
-                best_score = score
-                best_move = move
-
-        if best_move is None:
-            raise ValueError("AI could not find a valid move!")
-        
-        return best_move
-        
-    def minimax(
+    def get_best_move(
         self,
         board: Board,
         depth: int,
-        max_depth: int,
         alpha: int,
         beta: int,
         maximizing: bool,
-    ) -> tuple[int, int]:  
-        """Returnera det bästa möjliga draget med minimaxalgoritmen för svårighetsgrad två av AI:n.
+    ) -> tuple[int, int]:
+        """Implementerar minimaxalgoritmen för att hitta det bästa draget AI:n kan göra givet ett spelbräde.
 
         Args:
             board (Board): Logisk representation av brädet
-            depth (int): Djup när vi kallar på metoden
-            max_depth (int): Maximala djupet algoritmen tillåts evaluera till
+            depth (int): Djupet för hur många drag framåt vi evaluerar
             alpha (int): Bästa värde för maximerande spelaren när vi kallar på metoden
             beta (int): Bästa värde för minimerande spelaren när vi kallar på metoden
-            maximizing (bool): True om minimerande spelaren kallar på metoden annars False 
+            maximizing (bool): True om maximerande spelaren ska göra ett drag annars False.
 
         Returns:
-            tuple[int, int]: Bästa draget AI:n kan göra (row, col)
+            tuple[int, int]: Bästa draget AI:n kan göra (rad, kolumn).
         """
-        
-        if board.current_hash in self.transposition_table:
-                stored_score = self.transposition_table[board.current_hash]
-                return stored_score
 
-        if depth == max_depth or board.is_terminal():
-                board_score = board.evaluate_board(
-                    self.symbol, self.opponent_symbol
-                )
-                #weighted_score = self.weighted_board_score(board_score, depth)
-                self.store_transposition(board.current_hash, board_score)
-                return board_score
+        if board.current_hash in self.transposition_table and self.transposition_table[board.current_hash][1] >= depth:
+            stored_score = self.transposition_table[board.current_hash][0]
+            return stored_score, None
 
+        if depth == 0 or board.is_terminal():
+            board_score = board.evaluate_board(self.symbol, self.opponent_symbol)
+            self.store_transposition(board.current_hash, board_score, depth)
+            return board_score, None
 
+        best_move = None
         potential_moves = (
             board.get_potential_moves(self.symbol)
             if board.marked_cells != 0
             else board.get_empty_cells()
-        ) 
+        )
 
         if maximizing:
-            max_eval = float("-inf") # Sämsta möjliga evalueringen för den maximerande spelaren
+            max_eval = float(
+                "-inf"
+            )  # Sämsta möjliga evalueringen för den maximerande spelaren
 
             # Iteration över möjliga drag
-            for move in potential_moves: 
-                board.make_move_and_update_hash(self.symbol, move)
-
+            for move in potential_moves:
+                board.mark_cell_update_hash(self.symbol, move)
 
                 # Rekursivt anrop av funktionen
-                evaluation = self.minimax(
-                    board, depth + 1, max_depth, alpha, beta, False
-                )
-                board.undo_move_and_update_hash(move)
-                
-                if evaluation > max_eval:
-                    max_eval = evaluation
-                    
+                eval = self.get_best_move(board, depth - 1, alpha, beta, False)[0]
+                board.unmark_cell_update_hash(move)
+
+                if eval > max_eval:
+                    max_eval = eval
+                    best_move = move
+
                 # Alpha-Beta pruning för att minska antalet noder som behöver evalueras.
-                alpha = max(alpha, max_eval) 
+                alpha = max(alpha, eval)
                 if beta <= alpha:
                     break
 
-            return max_eval
+            return max_eval, best_move
 
         if not maximizing:
-            min_eval = float("inf") # Sämsta möjliga evalueringen för den minimerande spelaren
+            min_eval = float(
+                "inf"
+            )  # Sämsta möjliga evalueringen för den minimerande spelaren
 
             # Iteration över möjliga drag
-            for move in potential_moves: 
-                board.make_move_and_update_hash(self.opponent_symbol, move)
+            for move in potential_moves:
+                board.mark_cell_update_hash(self.opponent_symbol, move)
 
-                
-                #Rekursivt anrop av funktionen
-                evaluation = self.minimax(
-                    board, depth + 1, max_depth, alpha, beta, True
-                )
-                board.undo_move_and_update_hash(move)
-                
-                if evaluation < min_eval:
-                    min_eval = evaluation
+                # Rekursivt anrop av funktionen
+                eval = self.get_best_move(board, depth - 1, alpha, beta, True)[0]
+                board.unmark_cell_update_hash(move)
+
+                if eval < min_eval:
+                    min_eval = eval
+                    best_move = move
 
                 # Alpha-Beta pruning för att minska antalet noder som behöver evalueras
-                beta = min(beta, min_eval) 
+                beta = min(beta, eval)
                 if beta <= alpha:
                     break
 
+            return min_eval, best_move
 
-            return min_eval
+    def store_transposition(self, current_hash: int, score: float, depth: int) -> None:
+        """Lägger till hashen för ett bräde med dess korresponderande värde i cacheminnet och hanterar dess storlek.
 
-
-    def print_depth(depth, str):
-        indent = "  " * (3 - depth)
-        print(indent + str)
-    
-    
-    @staticmethod
-    def weighted_board_score(score, depth):
-        return score
-        if score >= 1000000:
-            return score - depth
-        elif score <= -1000000:
-            return score + depth
-        else:
-            return score
-        
-    
-    def store_transposition(self, current_hash: int, score: float) -> None:
-        """Store the evaluated score in the transposition table with size limit."""
+        Args:
+            current_hash (int): Hashvärdet för brädet.
+            score (float): Brädets värde.
+            depth (int): Djupet brädet evalueras på.
+        """
         if current_hash in self.transposition_table:
-            # Move to the end to show that it was recently used
             self.transposition_table.move_to_end(current_hash)
-            return  # Already stored
-    
+            return None
+
         if len(self.transposition_table) >= self.trans_table_size:
-            # Remove the first (least recently used) item
             self.transposition_table.popitem(last=False)
-    
-        self.transposition_table[current_hash] = score
 
-
+        self.transposition_table[current_hash] = [score, depth]

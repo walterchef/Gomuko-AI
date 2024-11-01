@@ -330,8 +330,7 @@ def main() -> None:
     
     
     
-# cellklass
-# namngivning 
+
 
 
 
